@@ -1,3 +1,5 @@
+var win = window;
+
 var harness = window.mochaPhantomJS || mocha;
 if (harness.checkLeaks) {
   harness.checkLeaks();
@@ -30,8 +32,35 @@ runner.on('fail', function(test, err) {
   });
 });
 
-runner.on('end', function(){
+// so.. now the question is ...
+// what do we do for identifying which browser results we got back?
+
+var socket = require('engine.io-client')({ path: '/__zuul/eio' });
+socket.onopen = function(){
+  console.log('opened');
+
+  socket.onmessage = function(data){
+    console.log('msg');
+  };
+
+  socket.onclose = function(){};
+};
+
+runner.on('end', function() {
+  var div = document.createElement('div');
+  div.innerHTML = 'done all';
+  document.body.appendChild(div);
+
   runner.stats.failed = failed;
   runner.stats.passed = failed.length === 0;
-  window.zuul_results = runner.stats;
+  win.zuul_results = runner.stats;
+
+  // so the only additional thing is we need to know for what browser
+  // this was for
+  socket.send(JSON.stringify({
+    type: 'done',
+    results: runner.stats
+  }));
+
+  zuul_results = runner.stats;
 });
