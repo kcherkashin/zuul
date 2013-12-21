@@ -1,82 +1,85 @@
 var eio = require('engine.io-client');
-var win = window;
+var JSON = require('JSON2');
+var load_script = require('load-script');
 
 // assigned by zuul so it knows which browser these tests are for
 var browser_id = zuul.browser_id;
 
 // convert zuul mocha ui's to our ui
 var ui_map = {
-  'mocha-bdd': 'bdd',
-  'mocha-qunit': 'qunit',
-  'mocha-tdd': 'tdd'
+    'mocha-bdd': 'bdd',
+    'mocha-qunit': 'qunit',
+    'mocha-tdd': 'tdd'
 };
 
 mocha.setup({
-  ui: ui_map[zuul.ui]
+    ui: ui_map[zuul.ui]
 });
 
-var socket = eio({ path: '/__zuul/eio' });
+// force polling for now
+// ie10 seems to disconnect early without it
+// too many factors here between localtunnel, engine.io and shitty browser
+var socket = eio({ path: '/__zuul/eio', transports: ['polling'] });
 socket.onopen = function() {
-  console.log('opened');
+    window.onerror = function(msg, file, line) {
+        socket.send(msg + ':' + line);
+    };
 
-  // load test bundle
-  var script = document.createElement('script');
-  script.onload = run_tests;
-  script.async = true;
-  script.src = '/__zuul/test-bundle.js';
-  document.body.appendChild(script);
+    // identify this connection only if we have a browser id
+    if (browser_id) {
+        socket.send(JSON.stringify({
+            type: 'browser id',
+            browser_id: browser_id
+        }));
+    }
 
-  socket.onclose = function() {
-    console.log('closed');
-    // TODO??
-  };
+    socket.onclose = function(msg) {
+        // what should be done if we disconnect too early?
+    };
+
+    load_script('/__zuul/test-bundle.js', run_tests);
 };
 
-var harness = global.mochaPhantomJS || mocha;
+var harness = mocha;
 if (harness.checkLeaks) {
-  harness.checkLeaks();
+    harness.checkLeaks();
 }
 
 function run_tests() {
-  var suite = harness.suite;
-  if (suite.suites.length === 0 && suite.tests.length === 0) {
-    // no tests to run
-    // TODO report done
-    return;
-  }
+    var stats = {
+        failed: 0,
+        passed: 0
+    };
 
-  var runner = harness.run();
+    var suite = harness.suite;
+    if (suite.suites.length === 0 && suite.tests.length === 0) {
+        socket.send(JSON.stringify({
+            type: 'done',
+            browser_id: browser_id,
+            results: stats
+        }));
+        return;
+    }
 
-  var failed = [];
+    var runner = harness.run();
 
-  runner.on('pass', function(test) {
-  });
-
-  runner.on('fail', function(test, err) {
-    failed.push({
-      title: test.title,
-      fullTitle: test.fullTitle(),
-      error: {
-        message: err.message,
-        stack: err.stack
-      }
+    runner.on('pass', function(test) {
+        stats.passed++;
     });
-  });
 
-  runner.on('end', function() {
-    console.log('done');
-    runner.stats.failed = failed;
-    runner.stats.passed = failed.length === 0;
-    //win.zuul_results = runner.stats;
+    runner.on('fail', function(test, err) {
+        stats.failed++;
+    });
 
-    // so the only additional thing is we need to know for what browser
-    // this was for
-    socket.send(JSON.stringify({
-      type: 'done',
-      browser_id: browser_id,
-      results: runner.stats
-    }));
-  });
+    runner.on('end', function() {
+        // so the only additional thing is we need to know for what browser
+        // this was for
+        socket.send(JSON.stringify({
+            type: 'done',
+            browser_id: browser_id,
+            results: stats
+        }), function() {
+            socket.close();
+        });
+    });
 }
-
-
