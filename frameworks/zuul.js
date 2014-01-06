@@ -256,6 +256,7 @@ ZuulReporter.prototype._renderError = function (stack, frames, message, error) {
     var pre = document.createElement('pre');
     pre.innerHTML = str ? str : (stack || message || error.toString());
     self._current_container.appendChild(pre);
+    trace_anchors.init_clippy();
 };
 
 function plainString (mapped) {

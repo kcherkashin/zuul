@@ -1,6 +1,8 @@
 'use strict';
+/*jshint browser: true*/
 
 var hljs = require('./hl.js');
+var ZeroClipboard = require('zeroclipboard');
 
 // TODO: (thlorenz) pull generic logic into separate module?
 function getCode(sources, frame) {
@@ -55,7 +57,7 @@ function onTraceClick (ev) {
     // nothing we can do in that case
     if (!li) return;
 
-    var div = li.children[1];
+    var div = li.children[2];
 
     // don't show anything if no code was added (should never get here since then it's not clickable)
     if (!div) return false;
@@ -69,7 +71,7 @@ var on_click = 'onclick="(' + onTraceClick + ').call(this, arguments[0])"';
 // creates clickable anchors for the mapped stack trace
 // when clicked the appropriate code in the source map is shown
 // the code of the first stack is shown initially by default
-module.exports = function (mapped, source_map) {
+exports = module.exports = function (mapped, source_map) {
     var sources_by_file = hashByFile(source_map);
 
     var str = '<ul class="trace-anchor" style="list-style-type: none;"' + '" ' + on_click + '>'
@@ -96,5 +98,39 @@ module.exports = function (mapped, source_map) {
     }
 
     str += '</ul>';
+    str += '<span class="trace-menu">'
+    str +=     '<button id="zeroclipboard-button" data-clipboard-text="' + 'file.js:2' + '" data-copied-hint="copied!" title="copy">'
+    str +=          'copy'
+    str +=     '</button>'
+    str +=     '<button value="zoom">zoom</button>'
+    str += '</span>'
     return str;
+};
+
+exports.init_clippy = function () {
+
+    var el = document.getElementById('zeroclipboard-button');
+    console.log('initializing clippy with', el);
+
+    var clip = new ZeroClipboard(el, { 
+        moviePath         :  '/__zuul/ZeroClipboard.swf',
+        forceHandCursor   :  true,
+        useNoCache        :  false,
+        allowScriptAccess :  'always',
+        zIndex            :  9999999999999999999,
+        trustedOrigins    :  '*',
+        debug             :  true
+    });
+
+    clip.on( 'mouseover', function ( client, args ) {
+        console.log( 'mouse is over movie' );
+    });
+    clip.on( 'load', function(client) {
+        console.log('movie is loaded');
+
+        client.on( 'complete', function(client, args) {
+            // this.style.display = 'none';
+            console.log('Copied text to clipboard: ' + args.text );
+        });
+    });
 };
